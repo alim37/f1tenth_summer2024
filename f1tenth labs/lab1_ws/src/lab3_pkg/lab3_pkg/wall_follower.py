@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
+from sensor_msgs.msg import LaserScan
 import math
 
 class WallFollowerNode(Node):      
 
     def __init__(self):
-        super().__init__("wall_follower")  
-
+        super().__init__("wall_follower") 
+        
         self.scan_sub = self.create_subscription(LaserScan, "/scan", self.scan_callback, 10)
         self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", 10)
 
-        self.kp = 5.0
+        self.kp = 14.0
         self.ki = 0.0
         self.kd = 0.5
 
         self.prev_error = 0.0
         self.integral = 0.0
-
+        
     def scan_callback(self, data):
         error = self.calculate_error(data)
         control = self.pid_control(error)
         self.publish_drive_msg(control)
-
+        
     def get_range(self, data, angle):
         angle = math.radians(angle)
 
@@ -34,13 +34,18 @@ class WallFollowerNode(Node):
             return data.ranges[index]
         else:
             return float('inf')
-
+        
     def calculate_error(self, data):
-        #distance_right = self.get_range(data,-90)
-        distance_left = self.get_range(data, 90)
+        ##distance_right = self.get_range(data,-90)
+        #distance_left = self.get_range(data, 90)
+        a = self.get_range(data,45)
+        b = self.get_range(data,90)
+        alpha = math.atan2(a*math.cos(math.radians(45))-b, a*math.sin(math.radians(45)))
+        D_t = b*math.cos(alpha)
         desired_distance = 1.0
-        #error = desired_distance - distance_right
-        error = desired_distance - distance_left
+        ##error = desired_distance - distance_right
+        #error = desired_distance - distance_left
+        error = desired_distance - D_t
         return error
 
     def pid_control(self, error):
@@ -65,12 +70,11 @@ class WallFollowerNode(Node):
 
         self.drive_pub.publish(drive_msg)
 
-
 def main(args=None):
     rclpy.init(args=args)   
-    node = WallFollowerNode()     
+    node = WallFollowerNode()      
     rclpy.spin(node)
-    rclpy.shutdown()        
+    rclpy.shutdown()       
 
 
 if __name__ == "__main__":
