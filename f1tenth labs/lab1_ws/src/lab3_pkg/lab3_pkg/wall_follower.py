@@ -14,8 +14,8 @@ class WallFollowerNode(Node):
         self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", 10)
 
         self.kp = 14.0
-        self.ki = 0.0
-        self.kd = 0.5
+        self.ki = 0.00
+        self.kd = 0.15
 
         self.prev_error = 0.0
         self.integral = 0.0
@@ -36,16 +36,15 @@ class WallFollowerNode(Node):
             return float('inf')
         
     def calculate_error(self, data):
-        ##distance_right = self.get_range(data,-90)
-        #distance_left = self.get_range(data, 90)
+
         a = self.get_range(data,45)
         b = self.get_range(data,90)
         alpha = math.atan2(a*math.cos(math.radians(45))-b, a*math.sin(math.radians(45)))
         D_t = b*math.cos(alpha)
         desired_distance = 1.0
-        ##error = desired_distance - distance_right
-        #error = desired_distance - distance_left
-        error = desired_distance - D_t
+        D_t1 = D_t + 1.0*math.sin(alpha)
+
+        error = desired_distance - D_t1
         return error
 
     def pid_control(self, error):
@@ -53,6 +52,7 @@ class WallFollowerNode(Node):
         derivative = error - self.prev_error
 
         control = -(self.kp * error + self.ki * self.integral + self.kd * derivative)
+        
         self.prev_error = error
 
         return control
@@ -63,7 +63,7 @@ class WallFollowerNode(Node):
         
         if abs(control) <= 10.0 * (math.pi / 180.0):
             drive_msg.drive.speed = 1.5
-        elif abs(control) <= 20.0 * (math.pi / 180.0):
+        elif 10.0 * (math.pi / 180.0) < abs(control) <= 20.0 * (math.pi / 180.0):
             drive_msg.drive.speed = 1.0
         else:
             drive_msg.drive.speed = 0.5
