@@ -13,7 +13,8 @@ class WallFollowerNode(Node):
         self.scan_sub = self.create_subscription(LaserScan, "/scan", self.scan_callback, 10)
         self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", 10)
 
-        self.kp = 14.0
+        self.kp = 3.0
+        #self.ki = 0.01
         self.ki = 0.00
         self.kd = 0.15
 
@@ -66,7 +67,7 @@ class WallFollowerNode(Node):
         elif 10.0 * (math.pi / 180.0) < abs(control) <= 20.0 * (math.pi / 180.0):
             drive_msg.drive.speed = 1.0
         else:
-            drive_msg.drive.speed = 0.5
+            drive_msg.drive.speed = 1.5
 
         self.drive_pub.publish(drive_msg)
 
