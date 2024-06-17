@@ -3,6 +3,7 @@ import rclpy
 from rclpy.node import Node
 from ackermann_msgs.msg import AckermannDriveStamped
 from sensor_msgs.msg import LaserScan
+import numpy as np
 import math
 
 class GapFollowNode(Node):      
@@ -12,44 +13,79 @@ class GapFollowNode(Node):
         
         self.scan_sub = self.create_subscription(LaserScan, "/scan", self.scan_callback, 10)
         self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", 10)
+        
        
-    # uses the Disparity Extender algorithm described in F1Tenth by this team: 
-    # https://www.nathanotterness.com/2019/04/the-disparity-extender-algorithm-and.html
-    
+       
     def scan_callback(self, msg):
-        ranges = msg.ranges
         
-        disparities = []
-        for i in range(1, len(ranges)):
-            if abs(ranges[i] - ranges[i-1]) > .2:
-                disparities.append(i)
+        # obtain laser scans and preprocess them
+        ranges = np.array(msg.ranges)
+        self.range_max = msg.range_max
+        ranges = np.clip(ranges, 0, self.range_max)
         
-        filtered_ranges = list(ranges)
-        for disp in disparities:
-            if ranges[disp] < ranges[disp-1]:
-                shorter = ranges[disp]
-                further = ranges[disp-1]
-            else:
-                shorter = ranges[disp-1]
-                further = ranges[disp]
+        min_angle = -70 / 180.0 * math.pi
+        min_idx = int(np.floor((min_angle - msg.angle_min) / msg.angle_increment))
+        max_angle = 70 / 180.0 * math.pi
+        max_idx = int(np.ceil((max_angle - msg.angle_min) / msg.angle_increment))
+        
+        # Find the closest point in the LiDAR ranges array
+        closest_idx = min_idx
+        closest_distance = msg.range_max * 5
+        for i in range(min_idx, max_idx):
+            distance = ranges[i-2] + ranges[i-1] + ranges[i] + ranges[i+1] + ranges[i+2]
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_idx = i
+
+        # eliiminate all points inside bubble
+        radius = 150
+        for i in range(closest_idx - radius, closest_idx + radius):
+            ranges[i] = 0.0
+        
+        # return start index and end index of max gap in free space ranges
+        start = min_idx
+        end = min_idx
+        current_start = min_idx - 1
+        duration = 0
+        longest_duration = 0
+        
+        for i in range(min_idx, max_idx): #max_idx + 1?
+            if current_start < min_idx:
+                if ranges[i] > 0.0:
+                    current_start = i
+            elif ranges[i] <= 0.0:
+                duration = i - current_start
+                if duration > longest_duration:
+                    longest_duration = duration
+                    start = current_start
+                    end = i -1
+        if current_start >= min_idx:
+            duration = max_idx + 1 - current_start
+            if duration > longest_duration:
+                longest_duration = duration
+                start = current_start
+                end = max_idx
                 
-            
-            safety_bubble = shorter
-            for i in range(disp+1, len(ranges)):
-                if ranges[i] >= further:
-                    break
-                filtered_ranges[i] = safety_bubble
-                safety_bubble += 0.1
-                
-        farthest_point = max(filtered_ranges[int(len(ranges)/4):int(3*len(ranges)/4)])
-        farthest_index = filtered_ranges.index(farthest_point)
-        steering_angle = (farthest_index - len(ranges)/2) * msg.angle_increment
+        # return index of best point in ranges
+        current_max = 0
+        for i in range(start, end +1):
+            if ranges[i] > current_max:
+                current_max = ranges[i]
+                self.angle = msg.angle_min + i * msg.angle_increment
+            elif ranges[i] == current_max:
+                if abs(msg.angle_min + i * msg.angle_increment) < abs(self.angle):
+                    self.angle = msg.angle_min + i * msg.angle_increment
         
-        msg = AckermannDriveStamped()
-        msg.drive.speed = 1.0
-        msg.drive.steering_angle = steering_angle
+        self.reactive_control()
         
-        self.drive_pub.publish(msg)
+    def reactive_control(self):
+        drive_msg = AckermannDriveStamped()
+        drive_msg.drive.steering_angle = self.angle
+        drive_msg.drive.speed = 1.0
+        self.drive_pub.publish(drive_msg)
+        
+        
+        
         
 
 def main(args=None):
