@@ -23,52 +23,52 @@ class GapFollowNode(Node):
         self.range_max = msg.range_max
         ranges = np.clip(ranges, 0, self.range_max)
         
-        min_angle = -70 / 180.0 * math.pi
+        min_angle = -65 / 180.0 * math.pi
         min_idx = int(np.floor((min_angle - msg.angle_min) / msg.angle_increment))
-        max_angle = 70 / 180.0 * math.pi
+        max_angle = 65 / 180.0 * math.pi
         max_idx = int(np.ceil((max_angle - msg.angle_min) / msg.angle_increment))
         
         # Find the closest point in the LiDAR ranges array
         closest_idx = min_idx
         closest_distance = msg.range_max * 5
-        for i in range(min_idx, max_idx):
+        for i in range(min_idx, max_idx+1):
             distance = ranges[i-2] + ranges[i-1] + ranges[i] + ranges[i+1] + ranges[i+2]
             if distance < closest_distance:
                 closest_distance = distance
                 closest_idx = i
 
-        # eliiminate all points inside bubble
+        # eliminate all points inside bubble
         radius = 150
         for i in range(closest_idx - radius, closest_idx + radius):
             ranges[i] = 0.0
         
         # return start index and end index of max gap in free space ranges
-        start = min_idx
-        end = min_idx
-        current_start = min_idx - 1
+        start_gap = min_idx
+        end_gap = min_idx
+        current_start = min_idx - 1 # if longest gap is at first index this verifies it can be handled
         duration = 0
         longest_duration = 0
         
-        for i in range(min_idx, max_idx): #max_idx + 1?
-            if current_start < min_idx:
+        for i in range(min_idx, max_idx + 1): # w/out +1 it leaves out last point
+            if current_start < min_idx:     # checks if first index has first gap
                 if ranges[i] > 0.0:
                     current_start = i
             elif ranges[i] <= 0.0:
                 duration = i - current_start
                 if duration > longest_duration:
                     longest_duration = duration
-                    start = current_start
-                    end = i -1
-        if current_start >= min_idx:
+                    start_gap = current_start
+                    end_gap = i -1
+        if current_start >= min_idx:        # checks final gap
             duration = max_idx + 1 - current_start
             if duration > longest_duration:
                 longest_duration = duration
-                start = current_start
-                end = max_idx
+                start_gap = current_start
+                end_gap = max_idx
                 
-        # return index of best point in ranges
+        # return index of best 'goal' in the gap
         current_max = 0
-        for i in range(start, end +1):
+        for i in range(start_gap, end_gap + 1):
             if ranges[i] > current_max:
                 current_max = ranges[i]
                 self.angle = msg.angle_min + i * msg.angle_increment
@@ -83,10 +83,7 @@ class GapFollowNode(Node):
         drive_msg.drive.steering_angle = self.angle
         drive_msg.drive.speed = 1.0
         self.drive_pub.publish(drive_msg)
-        
-        
-        
-        
+         
 
 def main(args=None):
     rclpy.init(args=args)   
