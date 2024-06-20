@@ -38,7 +38,7 @@ class GapFollowNode(Node):
                 closest_idx = i
 
         # eliminate all points inside bubble
-        radius = 170
+        radius = 180
         for i in range(closest_idx - radius, closest_idx + radius):
             ranges[i] = 0.0
         
