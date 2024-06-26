@@ -13,9 +13,7 @@ class GapFollowNode(Node):
         
         self.scan_sub = self.create_subscription(LaserScan, "/scan", self.scan_callback, 10)
         self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", 10)
-        
-       
-       
+          
     def scan_callback(self, msg):
         
         # obtain laser scans and preprocess them
@@ -23,9 +21,9 @@ class GapFollowNode(Node):
         self.range_max = msg.range_max
         ranges = np.clip(ranges, 0, self.range_max)
         
-        min_angle = -65 / 180.0 * math.pi
+        min_angle = math.radians(-75)
         min_idx = int(np.floor((min_angle - msg.angle_min) / msg.angle_increment))
-        max_angle = 65 / 180.0 * math.pi
+        max_angle = math.radians(75)
         max_idx = int(np.ceil((max_angle - msg.angle_min) / msg.angle_increment))
         
         # Find the closest point in the LiDAR ranges array
@@ -38,28 +36,29 @@ class GapFollowNode(Node):
                 closest_idx = i
 
         # eliminate all points inside bubble
-        radius = 150
+        radius = 180
         for i in range(closest_idx - radius, closest_idx + radius):
             ranges[i] = 0.0
         
         # return start index and end index of max gap in free space ranges
         start_gap = min_idx
         end_gap = min_idx
-        current_start = min_idx - 1 # if longest gap is at first index this verifies it can be handled
+        current_start = -1
         duration = 0
         longest_duration = 0
-        
-        for i in range(min_idx, max_idx + 1): # w/out +1 it leaves out last point
-            if current_start < min_idx:     # checks if first index has first gap
-                if ranges[i] > 0.0:
+           
+        for i in range(min_idx, max_idx +1):
+            if ranges[i] > 0.0:
+                if current_start == -1:
                     current_start = i
-            elif ranges[i] <= 0.0:
-                duration = i - current_start
-                if duration > longest_duration:
-                    longest_duration = duration
-                    start_gap = current_start
-                    end_gap = i -1
-        if current_start >= min_idx:        # checks final gap
+            else:
+                if current_start != -1:
+                    duration = i - current_start
+                    if duration > longest_duration:
+                        longest_duration = duration
+                        start_gap = current_start
+                        end_gap = i - 1
+        if current_start != -1:
             duration = max_idx + 1 - current_start
             if duration > longest_duration:
                 longest_duration = duration
@@ -81,7 +80,7 @@ class GapFollowNode(Node):
     def reactive_control(self):
         drive_msg = AckermannDriveStamped()
         drive_msg.drive.steering_angle = self.angle
-        drive_msg.drive.speed = 1.0
+        drive_msg.drive.speed = 2.0
         self.drive_pub.publish(drive_msg)
          
 
