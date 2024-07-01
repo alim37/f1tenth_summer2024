@@ -3,10 +3,10 @@ import rclpy
 from rclpy.node import Node
 from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import LaserScan
-from scipy.interpolate import splprep, splev
 import numpy as np
 import math
+import matplotlib.pyplot as plt
+import os
 
 class PurePursuitNode(Node):      
 
@@ -114,12 +114,28 @@ class PurePursuitNode(Node):
 
         self.drive_pub =self.create_publisher(AckermannDriveStamped, '/drive', 10)
         self.odom_sub = self.create_subscription(Odometry, '/ego_racecar/odom', self.odom_callback, 10)
+        self.velocities =[]
+        self.times = []
+        self.start_time = None
 
         self.create_timer(0.1, self.pure_pursuit)
     
     def odom_callback(self, msg):
         self.current_pose = msg.pose.pose
-        self.get_logger().info(f'Received odom: x={self.current_pose.position.x:.2f}, y={self.current_pose.position.y:.2f}')
+        #self.get_logger().info(f'Received odom: x={self.current_pose.position.x:.2f}, y={self.current_pose.position.y:.2f}')
+        
+        if self.start_time is None:
+            self.start_time = self.get_clock().now()
+        
+        current_time = (self.get_clock().now() - self.start_time).nanoseconds / 1e9
+        v_x = msg.twist.twist.linear.x
+        v_y = msg.twist.twist.linear.y
+        total_velocity = math.sqrt(v_x**2 + v_y**2)
+        
+        self.velocities.append(total_velocity)
+        self.times.append(current_time)
+        
+        self.get_logger().info(f'Velocity is: {v_x:.2f} at time: {current_time:.2f}')
 
     def pure_pursuit(self):
         if self.current_target_idx >= len(self.targets):
@@ -153,7 +169,8 @@ class PurePursuitNode(Node):
         drive_msg.drive.steering_angle = steering_angle
 
         self.drive_pub.publish(drive_msg)
-        
+    
+    # https://gist.github.com/salmagro/2e698ad4fbf9dae40244769c5ab74434
     def euler_from_quaternion(self, quaternion):
         x = quaternion.x
         y = quaternion.y
@@ -179,6 +196,17 @@ def main(args=None):
 
     node = PurePursuitNode()      
     rclpy.spin(node)
+    
+    plt.figure(figsize=(10,6))
+    plt.plot(node.times, node.velocities)
+    plt.title('Total Velocity vs Time')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Total velocity (m/s)')
+    plt.grid(True)
+    save_path = os.path.expanduser('~/graphs/velocity_vs_time.png')
+    plt.savefig(save_path)
+    plt.show()
+    
     rclpy.shutdown()       
 
 if __name__ == "__main__":
