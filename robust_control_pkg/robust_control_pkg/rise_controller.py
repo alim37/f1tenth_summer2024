@@ -4,6 +4,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from ackermann_msgs.msg import AckermannDriveStamped
 import numpy as np
+import math
 
 class RISEControlNode(Node):      
 
@@ -34,7 +35,12 @@ class RISEControlNode(Node):
         dt = (current_time - self.prev_time).nanoseconds / 1e9
         self.prev_time = current_time
 
-        error = self.calculate_error(msg)
+        a = self.get_range(msg, 45)
+        b = self.get_range(msg, 90)
+        alpha = math.atan2(a*math.cos(math.radians(45)) - b, a*math.sin(math.radians(45)))
+        D_t = b*math.cos(alpha)
+        D_t1 = D_t + 1.0*math.sin(alpha)
+        error = self.desired_distance - D_t1
 
         error_dt = (error - self.prev_error) / dt if dt > 0 else 0
         self.prev_error = error
@@ -57,15 +63,16 @@ class RISEControlNode(Node):
 
         self.get_logger().info(f'Error: {error:.2f}, Control: {control_out:.2f}, Distance: {self.desired_distance - error:.2f}')
 
-        
-    def calculate_error(self, scan_msg):
-        ranges = np.array(scan_msg.ranges)
-        valid_ranges = ranges[np.isfinite(ranges)]
+    def get_range(self, data, angle):
+        angle = math.radians(angle)
 
-        if len(valid_ranges) > 0:
-            min_distance = np.min(valid_ranges)
-            return min_distance - self.desired_distance
-        return 0.0
+        index = int((angle - data.angle_min) / data.angle_increment)
+
+        if 0 <= index < len(data.ranges):
+            return data.ranges[index]
+        else:
+            return float('inf')
+        
 
 def main(args=None):
     rclpy.init(args=args)   
