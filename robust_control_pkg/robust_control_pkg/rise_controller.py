@@ -24,7 +24,7 @@ class RISEControlNode(Node):
         self.integral = 0.0
         self.prev_error = 0.0
 
-        self.max_steering_angle = 0.8
+        self.max_steering_angle = 1.0
 
         self.u = 0
         self.max_integral = 1.0
@@ -39,7 +39,7 @@ class RISEControlNode(Node):
         b = self.get_range(msg, 90)
         alpha = math.atan2(a*math.cos(math.radians(45)) - b, a*math.sin(math.radians(45)))
         D_t = b*math.cos(alpha)
-        D_t1 = D_t + 1.0*math.sin(alpha)
+        D_t1 = D_t + 1.10*math.sin(alpha)
         error = self.desired_distance - D_t1
 
         error_dt = (error - self.prev_error) / dt if dt > 0 else 0
