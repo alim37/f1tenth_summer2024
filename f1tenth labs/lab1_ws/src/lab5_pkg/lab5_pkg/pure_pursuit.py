@@ -7,6 +7,7 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import os
+import csv
 
 class PurePursuitNode(Node):      
 
@@ -117,6 +118,7 @@ class PurePursuitNode(Node):
         self.velocities =[]
         self.times = []
         self.start_time = None
+        self.lap_end_time = None
 
         self.create_timer(0.1, self.pure_pursuit)
     
@@ -135,11 +137,12 @@ class PurePursuitNode(Node):
         self.velocities.append(total_velocity)
         self.times.append(current_time)
         
-        self.get_logger().info(f'Velocity is: {v_x:.2f} at time: {current_time:.2f}')
+        #self.get_logger().info(f'Velocity is: {v_x:.2f} at time: {current_time:.2f}')
 
     def pure_pursuit(self):
         if self.current_target_idx >= len(self.targets):
-            self.get_logger().info('End of lap')
+            if self.lap_end_time is None:
+                self.lap_end_time = (self.get_clock().now() - self.start_time).nanoseconds / 1e9     
             return
         
         current_target = self.targets[self.current_target_idx]
@@ -165,7 +168,7 @@ class PurePursuitNode(Node):
         #steering_angle = max(-self.max_steering_angle, min(self.max_steering_angle, steering_angle))
 
         drive_msg = AckermannDriveStamped()
-        drive_msg.drive.speed = 1.0
+        drive_msg.drive.speed = 1.5
         drive_msg.drive.steering_angle = steering_angle
 
         self.drive_pub.publish(drive_msg)
@@ -189,25 +192,69 @@ class PurePursuitNode(Node):
         yaw = math.atan2(siny_cosp, cosy_cosp)
 
         return roll, pitch, yaw
+    
+    #def plot_velocity(self):
+    #    plt.figure(figsize=(10,6))
+    #    plt.plot(self.times, self.velocities)
+    #    plt.xlabel('Time (s)')
+    #    plt.ylabel('Total velocity (m/s)')
+    #    plt.grid(True)
+    #    
+    #    save_dir = os.path.expanduser('~/graphs/velocity_vs_time.png')
+    #    os.makedirs(save_dir, exist_ok=True)
+    #    
+    #    save_path = os.path.join(save_dir, 'velocity_vs_time_pp.png')
+    #    plt.savefig(save_path)
+    #    plt.show()
+    #    plt.close()
+    #    
+    #    self.get_logger().info(f'Graph saved to: {save_path}')
+
+    def save_data(self):
+        save_dir = os.path.expanduser('~/data_pp')
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Save velocities
+        velocities_path = os.path.join(save_dir, 'velocities_pp.csv')
+        with open(velocities_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Velocity'])  # Header
+            for velocity in self.velocities:
+                writer.writerow([velocity])
+        
+        # Save times
+        times_path = os.path.join(save_dir, 'times_pp.csv')
+        with open(times_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Time'])  # Header
+            for time in self.times:
+                writer.writerow([time])
+                
+        # Save lap time
+        lap_time_path = os.path.join(save_dir, 'lap_time_pp.csv')
+        with open(lap_time_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Lap Time'])
+            if self.lap_end_time is not None:
+                writer.writerow([self.lap_end_time])
+            
+        
+        self.get_logger().info(f'Velocities saved to: {velocities_path}')
+        self.get_logger().info(f'Times saved to: {times_path}')
+        self.get_logger().info(f'Lap time saved to: {lap_time_path}')
 
 
 def main(args=None):
     rclpy.init(args=args)   
 
-    node = PurePursuitNode()      
-    rclpy.spin(node)
-    
-    plt.figure(figsize=(10,6))
-    plt.plot(node.times, node.velocities)
-    plt.title('Total Velocity vs Time')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Total velocity (m/s)')
-    plt.grid(True)
-    save_path = os.path.expanduser('~/graphs/velocity_vs_time.png')
-    plt.savefig(save_path)
-    plt.show()
-    
-    rclpy.shutdown()       
+    node = PurePursuitNode()     
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        print("Node stopped cleanly.")
+    finally:
+        node.save_data()
+        rclpy.shutdown()         
 
 if __name__ == "__main__":
     main()
