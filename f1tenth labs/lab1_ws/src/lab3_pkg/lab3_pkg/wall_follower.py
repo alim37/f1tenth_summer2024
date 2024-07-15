@@ -5,6 +5,8 @@ from ackermann_msgs.msg import AckermannDriveStamped
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 import math
+import os
+import csv
 
 class WallFollowerNode(Node):      
 
@@ -26,6 +28,8 @@ class WallFollowerNode(Node):
         self.velocities = []
         self.times = []
         self.start_time = None
+        self.lap_end_time = None
+        self.lap_completed = False
         
     def scan_callback(self, data):
         error = self.calculate_error(data)
@@ -89,14 +93,51 @@ class WallFollowerNode(Node):
         self.velocities.append(total_velocity)
         self.times.append(current_time)
         
-        self.get_logger().info(f'Velocity is: {total_velocity:.2f} at time: {current_time:.2f}')
+        current_x = msg.pose.pose.position.x
+        current_y = msg.pose.pose.position.y
+        
+        if current_x <= 1 and current_y <= 1 and not self.lap_completed:
+            lap_time = (self.get_clock().now() - self.start_time).nanoseconds / 1e9
+            self.lap_completed = True
+            self.get_logger().info(f'Lap completed in {lap_time:.2f} seconds')
+        
+        if current_x and current_y <= 1:
+            self.lap_completed = False
+            
+    def save_data(self):
+        save_dir = os.path.expanduser('~/data_pid')
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Save velocities
+        velocities_path = os.path.join(save_dir, 'velocities_pid.csv')
+        with open(velocities_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Velocity'])  # Header
+            for velocity in self.velocities:
+                writer.writerow([velocity])
+        
+        # Save times
+        times_path = os.path.join(save_dir, 'times_pid.csv')
+        with open(times_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Time'])  # Header
+            for time in self.times:
+                writer.writerow([time])
+
+        self.get_logger().info(f'Velocities saved to: {velocities_path}')
+        self.get_logger().info(f'Times saved to: {times_path}')
 
 
 def main(args=None):
     rclpy.init(args=args)   
-    node = WallFollowerNode()      
-    rclpy.spin(node)
-    rclpy.shutdown()       
+    node = WallFollowerNode()     
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        print("Node stopped cleanly.")
+    finally:
+        node.save_data()
+        rclpy.shutdown()       
 
 
 if __name__ == "__main__":
