@@ -1,0 +1,9 @@
+source;share/rrt/hook/pythonpath.ps1
+source;share/rrt/hook/pythonpath.dsv
+source;share/rrt/hook/pythonpath.sh
+source;share/rrt/hook/ament_prefix_path.ps1
+source;share/rrt/hook/ament_prefix_path.dsv
+source;share/rrt/hook/ament_prefix_path.sh
+source;../../build/rrt/share/rrt/hook/pythonpath_develop.ps1
+source;../../build/rrt/share/rrt/hook/pythonpath_develop.dsv
+source;../../build/rrt/share/rrt/hook/pythonpath_develop.sh
