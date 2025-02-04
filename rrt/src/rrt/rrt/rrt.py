@@ -43,7 +43,6 @@ class RRTPlanner(Node):
         self.current_y = 0.0
         self.current_heading = 0.0
         
-        # --- Fixed goal points (waypoints) ---
         self.goals = [(8.79, 0.20),(9.5,0.71),(9.94, 1.6),(9.5, 7.0), (-13.0, 9.1), (-14.0, 0.0)]
         self.goal_index = 0
         self.goal_x, self.goal_y = self.goals[self.goal_index]
@@ -80,7 +79,7 @@ class RRTPlanner(Node):
                 world_y = self.current_y + distance * np.sin(angle + self.current_heading)
                 grid_x, grid_y = self.world_to_grid(world_x, world_y)
                 
-                # # Inflate obstacles by WALL_MARGIN.
+                # wall margin testing for grid, not worth
                 # inflation_radius = int(WALL_MARGIN / GRID_RESOLUTION)
                 # x_min = max(0, grid_x - inflation_radius)
                 # x_max = min(self.grid_width, grid_x + inflation_radius + 1)
