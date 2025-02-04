@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# this uses a guide made by F1Tenth team: https://github.com/f1tenth/f1tenth_lab7_template/blob/0abac8b18db1f7078a973fc4057aed7cf64b7d97/lab7_pkg/scripts/rrt_node.py
+
 import rclpy
 from rclpy.node import Node
 import numpy as np
