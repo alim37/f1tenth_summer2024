@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-# this uses a guide made by F1Tenth team: https://github.com/f1tenth/f1tenth_lab7_template/blob/0abac8b18db1f7078a973fc4057aed7cf64b7d97/lab7_pkg/scripts/rrt_node.py
-
 import rclpy
 from rclpy.node import Node
 import numpy as np
@@ -11,6 +9,7 @@ from ackermann_msgs.msg import AckermannDriveStamped
 from dataclasses import dataclass
 from typing import List, Tuple
 import math
+import os  ### ADDED: Import os for file and directory operations
 
 GRID_RESOLUTION = 0.1       
 MAP_WIDTH = 30.0            
@@ -33,9 +32,9 @@ class RRTPlanner(Node):
     def __init__(self):
         super().__init__('rrt_planner')
         
-        self.odom_sub = self.create_subscription(Odometry,'/ego_racecar/odom',self.odom_callback,10)
-        self.scan_sub = self.create_subscription(LaserScan,'/scan',self.scan_callback,10)
-        self.drive_pub = self.create_publisher(AckermannDriveStamped,'/drive',10)
+        self.odom_sub = self.create_subscription(Odometry, '/ego_racecar/odom', self.odom_callback, 10)
+        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, '/drive', 10)
         
         self.grid_width = int(MAP_WIDTH / GRID_RESOLUTION)
         self.grid_height = int(MAP_HEIGHT / GRID_RESOLUTION)
@@ -45,14 +44,23 @@ class RRTPlanner(Node):
         self.current_y = 0.0
         self.current_heading = 0.0
         
-        self.goals = [(8.79, 0.20),(9.5,0.71),(9.94, 1.6),(9.5, 7.0), (-13.0, 9.1), (-14.0, 0.0)]
+        # --- Fixed goal points (waypoints) ---
+        self.goals = [(8.79, 0.20), (9.5, 0.71), (9.94, 1.6), (9.5, 7.0), (-13.0, 9.1), (-14.0, 0.0)]
         self.goal_index = 0
         self.goal_x, self.goal_y = self.goals[self.goal_index]
         
         self.prev_steering = 0.0
 
-        self.has_valid_scan = False
+        self.has_valid_scan = False  ### ADDED: Initialize has_valid_scan
         
+        # ### ADDED: Create folder "data_rrt" in the home directory and open a file for velocity logging.
+        home_dir = os.path.expanduser("~")
+        self.data_dir = os.path.join(home_dir, "data_rrt")
+        if not os.path.exists(self.data_dir):
+            os.makedirs(self.data_dir)
+        self.vel_file = open(os.path.join(self.data_dir, "velocity.txt"), "a")
+        # ### END ADDED
+
         self.get_logger().info('RRT Planner initialized')
 
     def world_to_grid(self, x: float, y: float) -> Tuple[int, int]:
@@ -81,7 +89,7 @@ class RRTPlanner(Node):
                 world_y = self.current_y + distance * np.sin(angle + self.current_heading)
                 grid_x, grid_y = self.world_to_grid(world_x, world_y)
                 
-                # wall margin testing for grid, not worth
+                # # Inflate obstacles by WALL_MARGIN.
                 # inflation_radius = int(WALL_MARGIN / GRID_RESOLUTION)
                 # x_min = max(0, grid_x - inflation_radius)
                 # x_max = min(self.grid_width, grid_x + inflation_radius + 1)
@@ -195,16 +203,25 @@ class RRTPlanner(Node):
         self.drive_pub.publish(drive_msg)
 
     def odom_callback(self, msg: Odometry):
-        """Update vehicle state, check waypoint progress, and plan/control a path."""
+        """Update vehicle state, check waypoint progress, plan/control a path, and record velocity."""
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
         quat = msg.pose.pose.orientation
-        self.current_heading = math.atan2(2.0 * (quat.w * quat.z + quat.x * quat.y),1.0 - 2.0 * (quat.y**2 + quat.z**2))
+        self.current_heading = math.atan2(2.0 * (quat.w * quat.z + quat.x * quat.y),
+                                          1.0 - 2.0 * (quat.y**2 + quat.z**2))
         
         # check if goal has been reached, hypot = euclidean norm
         if math.hypot(self.current_x - self.goal_x, self.current_y - self.goal_y) < GOAL_TOLERANCE:
             self.goal_index = (self.goal_index + 1) % len(self.goals)
             self.goal_x, self.goal_y = self.goals[self.goal_index]
+
+        # ### ADDED: Record the vehicle's velocity to file.
+        # Extract linear velocity from odometry (assuming forward velocity is in twist.twist.linear.x)
+        velocity = msg.twist.twist.linear.x
+        timestamp = self.get_clock().now().nanoseconds / 1e9  # convert to seconds as a float
+        self.vel_file.write(f"{timestamp},{velocity}\n")
+        self.vel_file.flush()  # Ensure the data is written immediately
+        # ### END ADDED
 
         path = self.plan_path()
         if path:
@@ -228,6 +245,12 @@ class RRTPlanner(Node):
             if best_node is None:
                 best_node = path[-1]
             self.send_drive_command(best_node.x, best_node.y)
+
+    def destroy_node(self):
+        # ### ADDED: Close the velocity file when shutting down.
+        self.vel_file.close()
+        # ### END ADDED
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
