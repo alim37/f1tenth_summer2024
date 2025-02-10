@@ -9,7 +9,7 @@ from ackermann_msgs.msg import AckermannDriveStamped
 from dataclasses import dataclass
 from typing import List, Tuple
 import math
-import os  ### ADDED: Import os for file and directory operations
+import os  # For file and directory operations
 
 GRID_RESOLUTION = 0.1       
 MAP_WIDTH = 30.0            
@@ -56,16 +56,16 @@ class RRTPlanner(Node):
         
         self.prev_steering = 0.0
 
-        self.has_valid_scan = False  ### ADDED: Initialize has_valid_scan
-        
-        # ### ADDED: Create folder "data_rrt" in the home directory and open a file for velocity logging.
+        self.has_valid_scan = False  # Initialize has_valid_scan
+
+        # Create folder "data_rrt" in the home directory and open files for logging velocity and position.
         home_dir = os.path.expanduser("~")
         self.data_dir = os.path.join(home_dir, "data_rrt")
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir)
         self.vel_file = open(os.path.join(self.data_dir, "velocity.txt"), "a")
-        # ### END ADDED
-
+        self.pos_file = open(os.path.join(self.data_dir, "position.txt"), "a")
+        
         self.get_logger().info('RRT Planner initialized')
 
     def world_to_grid(self, x: float, y: float) -> Tuple[int, int]:
@@ -94,7 +94,7 @@ class RRTPlanner(Node):
                 world_y = self.current_y + distance * np.sin(angle + self.current_heading)
                 grid_x, grid_y = self.world_to_grid(world_x, world_y)
                 
-                # # Inflate obstacles by WALL_MARGIN.
+                # The following block for obstacle inflation is commented out:
                 # inflation_radius = int(WALL_MARGIN / GRID_RESOLUTION)
                 # x_min = max(0, grid_x - inflation_radius)
                 # x_max = min(self.grid_width, grid_x + inflation_radius + 1)
@@ -102,7 +102,6 @@ class RRTPlanner(Node):
                 # y_max = min(self.grid_height, grid_y + inflation_radius + 1)
                 # self.occupancy_grid[x_min:x_max, y_min:y_max] = False
         
-        # Updated safety block:
         # Ensure the vehicle's current position is free (prevent self-collision).
         current_grid_x, current_grid_y = self.world_to_grid(self.current_x, self.current_y)
         safe_radius = int((VEHICLE_WIDTH / 2) / GRID_RESOLUTION)
@@ -194,7 +193,7 @@ class RRTPlanner(Node):
         max_steering = 0.4
         new_steering = np.clip(heading_error, -max_steering, max_steering)
         
-        # low-pass filter smooths the steering angle, too much oscillation previously
+        # Low-pass filter smooths the steering angle.
         alpha = 0.7  
         filtered_steering = alpha * new_steering + (1 - alpha) * self.prev_steering
         self.prev_steering = filtered_steering
@@ -202,35 +201,41 @@ class RRTPlanner(Node):
         drive_msg = AckermannDriveStamped()
         drive_msg.drive.steering_angle = filtered_steering
 
-        speed = 1.5
-        drive_msg.drive.speed = speed
+        if filtered_steering <= 10.0 * (math.pi / 180.0):
+            drive_msg.drive.speed = 4.0
+        elif 10.0 * (math.pi / 180.0) < abs(filtered_steering) <= 20.0 * (math.pi / 180.0):
+            drive_msg.drive.speed = 1.5
+        else:
+            drive_msg.drive.speed = 4.0
 
         self.drive_pub.publish(drive_msg)
 
     def odom_callback(self, msg: Odometry):
-        """Update vehicle state, check waypoint progress, plan/control a path, and record velocity."""
+        """Update vehicle state, check waypoint progress, plan/control a path, and record velocity and position."""
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
         quat = msg.pose.pose.orientation
         self.current_heading = math.atan2(2.0 * (quat.w * quat.z + quat.x * quat.y),
                                           1.0 - 2.0 * (quat.y**2 + quat.z**2))
         
-        # check if goal has been reached, hypot = euclidean norm
+        # Check if goal has been reached (using Euclidean norm).
         if math.hypot(self.current_x - self.goal_x, self.current_y - self.goal_y) < GOAL_TOLERANCE:
             self.goal_index = (self.goal_index + 1) % len(self.goals)
             self.goal_x, self.goal_y = self.goals[self.goal_index]
 
-        # ### ADDED: Record the vehicle's velocity to file.
-        # Extract linear velocity from odometry (assuming forward velocity is in twist.twist.linear.x)
+        # Record the vehicle's velocity.
         velocity = msg.twist.twist.linear.x
-        timestamp = self.get_clock().now().nanoseconds / 1e9  # convert to seconds as a float
+        timestamp = self.get_clock().now().nanoseconds / 1e9  # Timestamp in seconds as a float
         self.vel_file.write(f"{timestamp},{velocity}\n")
-        self.vel_file.flush()  # Ensure the data is written immediately
-        # ### END ADDED
+        self.vel_file.flush()  # Ensure data is written immediately
+        
+        # Record the vehicle's position.
+        self.pos_file.write(f"{timestamp},{self.current_x},{self.current_y}\n")
+        self.pos_file.flush()  # Ensure data is written immediately
 
         path = self.plan_path()
         if path:
-            # choosing best node with minimal heading error
+            # Choose the best node with minimal heading error.
             best_node = None
             best_error = float('inf')
             for node in path:
@@ -239,11 +244,9 @@ class RRTPlanner(Node):
                 dist = math.hypot(dx, dy)
                 if dist < LOOKAHEAD_DISTANCE:
                     continue
-                # Compute the angle from the car to the node.
                 node_angle = math.atan2(dy, dx)
                 error = abs(math.atan2(math.sin(node_angle - self.current_heading),
                                        math.cos(node_angle - self.current_heading)))
-
                 if error < best_error:
                     best_error = error
                     best_node = node
@@ -252,9 +255,9 @@ class RRTPlanner(Node):
             self.send_drive_command(best_node.x, best_node.y)
 
     def destroy_node(self):
-        # ### ADDED: Close the velocity file when shutting down.
+        # Close the logging files when shutting down.
         self.vel_file.close()
-        # ### END ADDED
+        self.pos_file.close()
         super().destroy_node()
 
 def main(args=None):
