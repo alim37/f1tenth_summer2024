@@ -45,7 +45,12 @@ class RRTPlanner(Node):
         self.current_heading = 0.0
         
         # --- Fixed goal points (waypoints) ---
-        self.goals = [(8.79, 0.20), (9.5, 0.71), (9.94, 1.6), (9.5, 7.0), (-13.0, 9.1), (-14.0, 0.0)]
+        # f1
+        #self.goals = [(8.79, 0.20), (9.5, 0.71), (9.94, 1.6), (9.5, 7.0), (-13.0, 9.1), (-14.0, 0.0)]
+        # default
+        #self.goals = [(9.5, 0), (9.5, 7.0), (-13.0, 9.1), (-14.0, 0.0)]
+        # outside
+        self.goals = [(8.94, -0.43), (10.11, 0.35), (9.5, 7.0), (-13.0, 9.1), (-14.0, 0.0)]
         self.goal_index = 0
         self.goal_x, self.goal_y = self.goals[self.goal_index]
         
